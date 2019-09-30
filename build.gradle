@@ -1,0 +1,20 @@
+plugins {
+    id 'java'
+}
+
+wrapper {
+    gradleVersion = '5.5.1'
+    distributionType = Wrapper.DistributionType.ALL
+}
+
+repositories {
+    mavenCentral()
+}
+
+sourceCompatibility = JavaVersion.VERSION_11
+targetCompatibility = JavaVersion.VERSION_11
+
+dependencies {
+    compile group: 'org.json', name: 'json', version: '20190722'
+    compile group: 'com.sun.activation', name: 'javax.activation', version: '1.2.0'
+}
