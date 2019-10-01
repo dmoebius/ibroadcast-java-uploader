@@ -18,3 +18,13 @@ dependencies {
     compile group: 'org.json', name: 'json', version: '20190722'
     compile group: 'com.sun.activation', name: 'javax.activation', version: '1.2.0'
 }
+
+jar {
+    archiveBaseName.set 'ibroadcast-java-uploader'
+    manifest {
+        attributes 'Main-Class': 'iBroadcastUploader'
+    }
+    from {
+        configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}
