@@ -6,6 +6,14 @@ This is an upload tool for the [iBroadcast music service](https://ibroadcast.com
 It's an derived and improved version of the Java uploader found at
 [project.ibroadcast.com](https://project.ibroadcast.com/).
 
+The improvements are:
+- parallel uploads
+- md5 calculation bug fixed, when md5 had more than one leading zero
+- faster md5 calculation
+- specify music folder as third argument
+- use modern Java 11 language features
+- build tool: Gradle instead of ancient Ant
+
 This is a personal private project. I do not work for and I'm not
 affiliated with iBroadcast in any way.
 
