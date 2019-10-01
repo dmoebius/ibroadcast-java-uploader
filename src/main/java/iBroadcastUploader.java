@@ -375,7 +375,7 @@ public class iBroadcastUploader {
         writer.flush();
 
         var inputStream = new FileInputStream(uploadFile);
-        var buffer = new byte[4096];
+        var buffer = new byte[204800];
         int bytesRead;
         while ((bytesRead = inputStream.read(buffer)) != -1) {
             outputStream.write(buffer, 0, bytesRead);
