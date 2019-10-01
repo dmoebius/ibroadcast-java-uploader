@@ -42,7 +42,7 @@ On Windows, use this instead:
 
 After the build was successful run the uploader as follows:
 ```
-java -jar build/libs/ibroadcast-java-uploader <email-address> <password> [<dir>]
+java -jar build/libs/ibroadcast-uploader.jar <email-address> <password> [<dir>]
 ```
 where _dir_ is your top-level music folder you want to upload. _dir_
 is optional. If you don't specify it, the _current_ folder gets used,

@@ -20,7 +20,7 @@ dependencies {
 }
 
 jar {
-    archiveBaseName.set 'ibroadcast-java-uploader'
+    archiveBaseName.set 'ibroadcast-uploader'
     manifest {
         attributes 'Main-Class': 'iBroadcastUploader'
     }
