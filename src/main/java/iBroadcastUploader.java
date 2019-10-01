@@ -12,7 +12,6 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
-import java.math.BigInteger;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.DigestInputStream;
@@ -50,6 +49,15 @@ public class iBroadcastUploader {
 
     private static final String CHARSET = "UTF-8";
     private static final CharSequence CR_LF = "\r\n";
+    private static final char[] DIGITS = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+
+    private static final ThreadLocal<MessageDigest> md5Digest = ThreadLocal.withInitial(() -> {
+        try {
+            return MessageDigest.getInstance("MD5");
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    });
 
     /**
      * @param args command line arguments
@@ -77,6 +85,7 @@ public class iBroadcastUploader {
         var jsonOut = new JSONObject(req).toString();
 
         // Post it to json.ibroadcast.com
+        message("Login...\n");
         var j = post("https://json.ibroadcast.com/s/JSON/" + req.get("mode"), jsonOut);
 
         String userId, token;
@@ -105,6 +114,7 @@ public class iBroadcastUploader {
         // current working directory
         var userDir = System.getProperty("user.dir");
         // Get files from current working directory
+        message("Collecting files to upload...\n");
         var listFileTree = listFileTree(new File(userDir), supported.keySet());
         // confirm upload with user
         var upload = confirm(listFileTree);
@@ -223,7 +233,7 @@ public class iBroadcastUploader {
         listFileTree.parallelStream().forEach(file -> {
             try {
                 uploadFile(file, userId, token, md5);
-            } catch (IOException | NoSuchAlgorithmException e) {
+            } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         });
@@ -231,21 +241,12 @@ public class iBroadcastUploader {
     }
 
     private static void uploadFile(File file, String userId, String token, Set<String> md5)
-            throws NoSuchAlgorithmException, IOException {
-        var md = MessageDigest.getInstance("MD5");
-        var buffer = new byte[8192];
-        try (var dis = new DigestInputStream(new FileInputStream(file), md)) {
-            while (dis.read(buffer) != -1) ;
-        }
-        // getting hex value of hash
-        var hashText = new BigInteger(1, md.digest()).toString(16);
-        // add leading zero, if not of length 32
-        var hashTextPadded = hashText.length() == 32 ? hashText : "0" + hashText;
-        message("Uploading: " + file + "\n");
-        if (md5.contains(hashText) || md5.contains(hashTextPadded)) {
-            // already uploaded
-            message("  skipping, already uploaded\n");
+            throws IOException {
+        String hashText = md5sum(file);
+        if (md5.contains(hashText)) {
+            message("Skipping:  " + file + ", already uploaded\n");
         } else {
+            message("Uploading: " + file + "\n");
             var status = uploadFile(file, userId, token);
             if (status == HttpURLConnection.HTTP_OK) {
                 message("Uploading: " + file + ": Done!\n");
@@ -410,5 +411,24 @@ public class iBroadcastUploader {
     private static void message(String message) {
         System.out.print(message);
         System.out.flush();
+    }
+
+    private static String md5sum(File file) throws IOException {
+        var buffer = new byte[204800];
+        var digest = md5Digest.get();
+        try (var dis = new DigestInputStream(new FileInputStream(file), digest)) {
+            while (dis.read(buffer) != -1) { /*intentionally left blank*/ }
+        }
+        return encodeHex(digest.digest());
+    }
+
+    private static String encodeHex(final byte[] data) {
+        final int l = data.length;
+        final char[] out = new char[l << 1];
+        for (int i = 0, j = 0; i < l; i++) {
+            out[j++] = DIGITS[(0xF0 & data[i]) >>> 4];
+            out[j++] = DIGITS[0x0F & data[i]];
+        }
+        return new String(out);
     }
 }
