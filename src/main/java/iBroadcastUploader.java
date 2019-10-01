@@ -73,25 +73,12 @@ public class iBroadcastUploader {
 
         // Inital request, verifies username/password, returns user_id/token and
         // supported file types
-        Map<String, Object> req = new HashMap<>();
-        req.put("mode", "status");
-        req.put("email_address", args[0]);
-        req.put("password", args[1]);
-        req.put("version", ".1");
-        req.put("client", "java uploader script");
-        req.put("supported_types", 1);
-
-        // Convert request to json
-        var jsonOut = new JSONObject(req).toString();
-
-        // Post it to json.ibroadcast.com
-        message("Login...\n");
-        var j = post("https://json.ibroadcast.com/s/JSON/" + req.get("mode"), jsonOut);
+        var userData = login(args[0], args[1]);
 
         String userId, token;
         try {
             // Get user id and token from response
-            var user = j.getJSONObject("user");
+            var user = userData.getJSONObject("user");
             userId = user.getString("id");
             token = user.getString("token");
 
@@ -101,21 +88,14 @@ public class iBroadcastUploader {
             return;
         }
 
-        // convert the supported array to a map
-        var supportedArray = j.getJSONArray("supported");
-
-        Map<String, Boolean> supported = new HashMap<>();
-
-        for (var i = 0; i < supportedArray.length(); i++) {
-            var supportedExtension = supportedArray.getJSONObject(i);
-            supported.put(supportedExtension.getString("extension"), true);
-        }
+        // convert the supported extensions array to a set
+        var supported = getSupportedExtensions(userData);
 
         // current working directory
         var userDir = System.getProperty("user.dir");
         // Get files from current working directory
         message("Collecting files to upload...\n");
-        var listFileTree = listFileTree(new File(userDir), supported.keySet());
+        var listFileTree = listFileTree(new File(userDir), supported);
         // confirm upload with user
         var upload = confirm(listFileTree);
         // upload
@@ -124,14 +104,42 @@ public class iBroadcastUploader {
         }
     }
 
+    private static JSONObject login(String email, String password) throws IOException {
+        message("Login...\n");
+
+        Map<String, Object> req = new HashMap<>();
+        req.put("mode", "status");
+        req.put("email_address", email);
+        req.put("password", password);
+        req.put("version", ".1");
+        req.put("client", "java uploader script");
+        req.put("supported_types", 1);
+
+        // Convert request to json
+        var jsonOut = new JSONObject(req).toString();
+
+        // Post it to json.ibroadcast.com
+        return post("https://json.ibroadcast.com/s/JSON/status", jsonOut, "application/json");
+    }
+
+    private static Set<String> getSupportedExtensions(JSONObject userData) {
+        var supportedArray = userData.getJSONArray("supported");
+        var supported = new HashSet<String>();
+        for (var i = 0; i < supportedArray.length(); i++) {
+            var supportedExtension = supportedArray.getJSONObject(i);
+            supported.add(supportedExtension.getString("extension"));
+        }
+        return supported;
+    }
+
     /**
      * Prompt for upload.
      *
      * @param files music files found
      */
     private static boolean confirm(Collection<File> files) {
-        message("Found " + files.size()
-                + " files. Press 'L' to list, or 'U' to start the upload.\n");
+        message("Found " + files.size() + " files.\n");
+        message("Press 'L' to list, 'U' to start the upload, or 'Q' to quit.\n");
 
         var list = Pattern.compile("L", Pattern.CASE_INSENSITIVE);
         var upload = Pattern.compile("U", Pattern.CASE_INSENSITIVE);
@@ -145,10 +153,10 @@ public class iBroadcastUploader {
                 for (var file : files) {
                     message(" - " + file + "\n");
                 }
-                message("Press 'U' to start the upload if this looks reasonable.\n");
+                message("Press 'U' to start the upload if this looks reasonable, " +
+                        "or 'Q' to quit.\n");
                 userInput = sc.next();
                 if (upload.matcher(userInput).matches()) {
-                    message("Starting upload\n");
                     return true;
                 } else {
                     message("aborted.\n");
@@ -193,7 +201,7 @@ public class iBroadcastUploader {
      * @return collection of files
      */
     private static Collection<File> listFileTree(File dir, Set<String> extensions) {
-        Set<File> fileTree = new HashSet<>();
+        var fileTree = new HashSet<File>();
         var files = dir.listFiles();
         if (files == null) {
             error("not a directory: " + dir.getAbsolutePath());
@@ -244,29 +252,18 @@ public class iBroadcastUploader {
 
     private static void uploadFile(File file, String userId, String token, Set<String> md5)
             throws IOException {
-        String hashText = md5sum(file);
+        var hashText = md5sum(file);
         if (md5.contains(hashText)) {
-            message("Skipping:  " + file + ", already uploaded\n");
+            message("Skipping:  " + file + "\n");
         } else {
             message("Uploading: " + file + "\n");
             var status = uploadFile(file, userId, token);
             if (status == HttpURLConnection.HTTP_OK) {
-                message("Uploading: " + file + ": Done!\n");
+                message("Uploaded:  " + file + "\n");
             } else {
-                message("Uploading: " + file + ": Failed.\n");
+                message("Failed:    " + file + "\n");
             }
         }
-    }
-
-    /**
-     * Talk with iBroadcast, posting data
-     *
-     * @param url     post url
-     * @param content post data
-     * @return response content, in json object format
-     */
-    private static JSONObject post(String url, String content) throws IOException {
-        return post(url, content, null);
     }
 
     /**
@@ -424,9 +421,9 @@ public class iBroadcastUploader {
         return encodeHex(digest.digest());
     }
 
-    private static String encodeHex(final byte[] data) {
-        final int l = data.length;
-        final char[] out = new char[l << 1];
+    private static String encodeHex(byte[] data) {
+        var l = data.length;
+        var out = new char[l << 1];
         for (int i = 0, j = 0; i < l; i++) {
             out[j++] = DIGITS[(0xF0 & data[i]) >>> 4];
             out[j++] = DIGITS[0x0F & data[i]];
