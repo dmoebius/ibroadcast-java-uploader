@@ -54,7 +54,7 @@ public class iBroadcastUploader {
     /**
      * @param args command line arguments
      */
-    public static void main(String[] args) throws IOException, NoSuchAlgorithmException {
+    public static void main(String[] args) throws IOException {
         // command line arguments are email address and password
         if (args.length < 2 || args[0].length() == 0 || args[1].length() == 0) {
             var usage = "Run this script in the parent directory of your music files.\n"
@@ -145,7 +145,6 @@ public class iBroadcastUploader {
                     return false;
                 }
             } else if (upload.matcher(userInput).matches()) {
-                message("Starting upload\n");
                 return true;
             } else {
                 message("aborted.\n");
@@ -217,32 +216,41 @@ public class iBroadcastUploader {
      */
     private static void uploadFiles(Collection<File> listFileTree,
                                     String userId, String token)
-            throws IOException, NoSuchAlgorithmException {
+            throws IOException {
+        message("Getting checksums...\n");
         var md5 = getMD5(userId, token);
+        message("Starting upload...\n");
+        listFileTree.parallelStream().forEach(file -> {
+            try {
+                uploadFile(file, userId, token, md5);
+            } catch (IOException | NoSuchAlgorithmException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        message("Complete.\n");
+    }
+
+    private static void uploadFile(File file, String userId, String token, Set<String> md5)
+            throws NoSuchAlgorithmException, IOException {
         var md = MessageDigest.getInstance("MD5");
         var buffer = new byte[8192];
-        for (var file : listFileTree) {
-
-            try (var dis = new DigestInputStream(new FileInputStream(
-                    file), md)) {
-                while (dis.read(buffer) != -1) {
-                }
-            }
-            // getting hex value of hash
-            var hashText = new BigInteger(1, md.digest()).toString(16);
-            // add leading zero, if not of length 32
-            var hashTextPadded = hashText.length() == 32 ? hashText : "0" + hashText;
-            message("Uploading: " + file + "\n");
-            if (md5.contains(hashText) || md5.contains(hashTextPadded)) {
-                // already uploaded
-                message(" skipping, already uploaded\n");
+        try (var dis = new DigestInputStream(new FileInputStream(file), md)) {
+            while (dis.read(buffer) != -1) ;
+        }
+        // getting hex value of hash
+        var hashText = new BigInteger(1, md.digest()).toString(16);
+        // add leading zero, if not of length 32
+        var hashTextPadded = hashText.length() == 32 ? hashText : "0" + hashText;
+        message("Uploading: " + file + "\n");
+        if (md5.contains(hashText) || md5.contains(hashTextPadded)) {
+            // already uploaded
+            message("  skipping, already uploaded\n");
+        } else {
+            var status = uploadFile(file, userId, token);
+            if (status == HttpURLConnection.HTTP_OK) {
+                message("Uploading: " + file + ": Done!\n");
             } else {
-                var status = uploadFile(userId, token, file);
-                if (status == HttpURLConnection.HTTP_OK) {
-                    message(" Done!\n");
-                } else {
-                    message(" Failed.\n");
-                }
+                message("Uploading: " + file + ": Failed.\n");
             }
         }
     }
@@ -254,7 +262,7 @@ public class iBroadcastUploader {
      * @param content post data
      * @return response content, in json object format
      */
-    static private JSONObject post(String url, String content) throws IOException {
+    private static JSONObject post(String url, String content) throws IOException {
         return post(url, content, null);
     }
 
@@ -266,7 +274,7 @@ public class iBroadcastUploader {
      * @param contentType content type or null
      * @return response content, in json object format
      */
-    static private JSONObject post(String url, String content, String contentType)
+    private static JSONObject post(String url, String content, String contentType)
             throws IOException {
         var con = (HttpsURLConnection) new URL(url).openConnection();
 
@@ -305,12 +313,12 @@ public class iBroadcastUploader {
     /**
      * Talk with iBroadcast, posting data and uploading file
      *
+     * @param file   file to upload
      * @param userId user id
      * @param token  user token
-     * @param file   file to upload
      * @return response code
      */
-    static private int uploadFile(String userId, String token, File file)
+    private static int uploadFile(File file, String userId, String token)
             throws IOException {
         var con = (HttpsURLConnection) new URL("https://sync.ibroadcast.com")
                 .openConnection();
@@ -351,8 +359,8 @@ public class iBroadcastUploader {
     /**
      * Adds a upload file section to the request
      */
-    private static void addFilePart(PrintWriter writer,
-                                    OutputStream outputStream, File uploadFile, String boundary)
+    private static void addFilePart(PrintWriter writer, OutputStream outputStream,
+                                    File uploadFile, String boundary)
             throws IOException {
         var fileName = uploadFile.getName();
         writer.append("--").append(boundary).append(CR_LF);
