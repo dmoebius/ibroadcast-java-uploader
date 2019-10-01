@@ -23,6 +23,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
 import static java.util.Collections.emptySet;
@@ -95,12 +96,13 @@ public class iBroadcastUploader {
         var userDir = System.getProperty("user.dir");
         // Get files from current working directory
         message("Collecting files to upload...\n");
-        var listFileTree = listFileTree(new File(userDir), supported);
+        var rootDir = new File(userDir);
+        var listFileTree = listFileTree(rootDir, supported);
         // confirm upload with user
         var upload = confirm(listFileTree);
         // upload
         if (upload) {
-            uploadFiles(listFileTree, userId, token);
+            uploadFiles(listFileTree, userId, token, rootDir);
         }
     }
 
@@ -235,14 +237,16 @@ public class iBroadcastUploader {
      * Upload files.
      */
     private static void uploadFiles(Collection<File> listFileTree,
-                                    String userId, String token)
+                                    String userId, String token, File rootDir)
             throws IOException {
         message("Getting checksums...\n");
         var md5 = getMD5(userId, token);
+
         message("Starting upload...\n");
+        var count = new AtomicInteger(listFileTree.size());
         listFileTree.parallelStream().forEach(file -> {
             try {
-                uploadFile(file, userId, token, md5);
+                uploadFile(file, userId, token, rootDir, md5, count);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -250,18 +254,22 @@ public class iBroadcastUploader {
         message("Complete.\n");
     }
 
-    private static void uploadFile(File file, String userId, String token, Set<String> md5)
+    private static void uploadFile(File file, String userId, String token, File rootDir,
+                                   Set<String> md5, AtomicInteger count)
             throws IOException {
         var hashText = md5sum(file);
+        var path = computeRelativePath(file, rootDir);
         if (md5.contains(hashText)) {
-            message("Skipping:  " + file + "\n");
+            message("Skipping:  " + path + "\n");
+            count.decrementAndGet();
         } else {
-            message("Uploading: " + file + "\n");
-            var status = uploadFile(file, userId, token);
+            message("Uploading: " + path + "\n");
+            var status = uploadFile(file, path, userId, token);
+            var cnt = count.decrementAndGet();
             if (status == HttpURLConnection.HTTP_OK) {
-                message("Uploaded:  " + file + "\n");
+                message("Uploaded:  " + path + " -- " + cnt + " to go...\n");
             } else {
-                message("Failed:    " + file + "\n");
+                message("Failed:    " + path + "\n");
             }
         }
     }
@@ -313,12 +321,13 @@ public class iBroadcastUploader {
     /**
      * Talk with iBroadcast, posting data and uploading file
      *
-     * @param file   file to upload
-     * @param userId user id
-     * @param token  user token
+     * @param file         file to upload
+     * @param relativePath path relative to root dir
+     * @param userId       user id
+     * @param token        user token
      * @return response code
      */
-    private static int uploadFile(File file, String userId, String token)
+    private static int uploadFile(File file, String relativePath, String userId, String token)
             throws IOException {
         var con = (HttpsURLConnection) new URL("https://sync.ibroadcast.com")
                 .openConnection();
@@ -342,7 +351,7 @@ public class iBroadcastUploader {
                 outputStream, CHARSET), true);
 
         addFilePart(writer, outputStream, file, boundary);
-        addParameter(writer, "file_path", file.getPath(), boundary);
+        addParameter(writer, "file_path", relativePath, boundary);
         addParameter(writer, "method", "java uploader", boundary);
         addParameter(writer, "user_id", userId, boundary);
         addParameter(writer, "token", token, boundary);
@@ -354,6 +363,10 @@ public class iBroadcastUploader {
         con.disconnect();
 
         return con.getResponseCode();
+    }
+
+    private static String computeRelativePath(File file, File rootDir) {
+        return rootDir.toPath().relativize(file.toPath()).toString();
     }
 
     /**
