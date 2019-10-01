@@ -14,6 +14,11 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -23,6 +28,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
@@ -53,6 +59,7 @@ public class iBroadcastUploader {
     private static final String CHARSET = "UTF-8";
     private static final CharSequence CR_LF = "\r\n";
     private static final char[] DIGITS = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+    private static final int bufferSize = 32 * 4096;
 
     private static final ThreadLocal<MessageDigest> md5Digest = ThreadLocal.withInitial(() -> {
         try {
@@ -211,34 +218,34 @@ public class iBroadcastUploader {
      * @param extensions supported media file extensions
      * @return collection of files
      */
-    private static Collection<File> listFileTree(File dir, Set<String> extensions) {
-        var fileTree = new HashSet<File>();
-        var files = dir.listFiles();
-        if (files == null) {
-            error("not a directory: " + dir.getAbsolutePath());
+    private static Collection<File> listFileTree(File dir, Set<String> extensions) throws IOException {
+        if (!dir.exists() || !dir.isDirectory()) {
+            error("Error: not a directory: " + dir.getAbsolutePath());
             return emptySet(); // compiler needs this
         }
-        for (var file : files) {
-            // skip hidden
-            if (Pattern.compile("^\\..*").matcher(file.getName()).matches()) {
-                continue;
-            }
-            if (file.isFile()) {
-                // file extension
-                var extensionMatcher = Pattern.compile(".*(\\..{2,5})")
-                        .matcher(file.getName());
-                if (extensionMatcher.matches()) {
-                    // file extension
-                    var extension = extensionMatcher.group(1);
-                    if (extensions.contains(extension)) {
-                        fileTree.add(file);
+
+        var fileTree = new TreeSet<File>();
+        var hiddenFile = Pattern.compile("^\\..*");
+        var extensionMatcher = Pattern.compile(".*(\\..{2,5})");
+
+        Files.walkFileTree(dir.toPath(), new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path path, BasicFileAttributes attrs) throws IOException {
+                var filename = path.getFileName().toString();
+                if (attrs.isRegularFile() && !hiddenFile.matcher(filename).matches()) {
+                    var extensionMatch = extensionMatcher.matcher(filename);
+                    if (extensionMatch.matches()) {
+                        // file extension
+                        var extension = extensionMatch.group(1);
+                        if (extensions.contains(extension)) {
+                            fileTree.add(path.toFile());
+                        }
                     }
                 }
-            } else {
-                // dir, descend
-                fileTree.addAll(listFileTree(file, extensions));
+                return super.visitFile(path, attrs);
             }
-        }
+        });
+
         return fileTree;
     }
 
@@ -355,19 +362,21 @@ public class iBroadcastUploader {
 
         con.setRequestProperty("Content-Type", contentType);
         con.setRequestProperty("User-Agent", "java uploader");
-        var outputStream = con.getOutputStream();
-        var writer = new PrintWriter(new OutputStreamWriter(
-                outputStream, CHARSET), true);
 
-        addFilePart(writer, outputStream, file, boundary);
-        addParameter(writer, "file_path", relativePath, boundary);
-        addParameter(writer, "method", "java uploader", boundary);
-        addParameter(writer, "user_id", userId, boundary);
-        addParameter(writer, "token", token, boundary);
+        try (var outputStream = con.getOutputStream()) {
+            var writer = new PrintWriter(new OutputStreamWriter(
+                    outputStream, CHARSET), true);
 
-        writer.append("--").append(boundary).append("--").append(CR_LF);
-        writer.flush();
-        writer.close();
+            addFilePart(writer, outputStream, file, boundary);
+            addParameter(writer, "file_path", relativePath, boundary);
+            addParameter(writer, "method", "java uploader", boundary);
+            addParameter(writer, "user_id", userId, boundary);
+            addParameter(writer, "token", token, boundary);
+
+            writer.append("--").append(boundary).append("--").append(CR_LF);
+            writer.flush();
+            writer.close();
+        }
 
         con.disconnect();
 
@@ -385,16 +394,16 @@ public class iBroadcastUploader {
                                     File uploadFile, String boundary)
             throws IOException {
         var fileName = uploadFile.getName();
-        writer.append("--").append(boundary).append(CR_LF);
         var contentType = MimetypesFileTypeMap.getDefaultFileTypeMap().getContentType(uploadFile);
-        writer.append("Content-Disposition: form-data; name=\"file\"; filename=\"")
+        writer.append("--").append(boundary).append(CR_LF)
+                .append("Content-Disposition: form-data; name=\"file\"; filename=\"")
                 .append(fileName).append("\"").append(CR_LF)
                 .append("Content-Type: ").append(contentType).append(CR_LF)
                 .append(CR_LF);
         writer.flush();
 
         var inputStream = new FileInputStream(uploadFile);
-        var buffer = new byte[204800];
+        var buffer = new byte[bufferSize];
         int bytesRead;
         while ((bytesRead = inputStream.read(buffer)) != -1) {
             outputStream.write(buffer, 0, bytesRead);
@@ -435,7 +444,7 @@ public class iBroadcastUploader {
     }
 
     private static String md5sum(File file) throws IOException {
-        var buffer = new byte[204800];
+        var buffer = new byte[bufferSize];
         var digest = md5Digest.get();
         try (var dis = new DigestInputStream(new FileInputStream(file), digest)) {
             while (dis.read(buffer) != -1) { /*intentionally left blank*/ }
