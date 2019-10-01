@@ -31,20 +31,22 @@ import static java.util.Collections.emptySet;
 /**
  * For testing and development, create a free account at iBroadcast.com. The
  * script is run in a parent directory (only search current directory and child
- * directories) and find all supported music files
+ * directories) and find all supported music files.
  * <p>
  * The script works by:
- * <p>
- * java -jar dist/ibroadcast-uploader.jar <email_address> <password>
- * <p>
+ * <pre>
+ * java -jar ibroadcast-uploader.jar &lt;email-address&gt; &lt;password&gt; [&lt;dir&gt;]
+ * </pre>
  * The basic steps are:
- * <p>
- * 1. Log in with a username/password into iBroadcast 2. Capture the supported
- * file types from the server 3. Use user_id and token for subsequent requests
- * returned from initial request 4. Get md5 listing of user's files (songs in
- * their library) from iBroadcast server 5. Find supported music files locally,
- * give the user option to list those files found 6. Upload files to iBroadcast
- * via http/post 7. Skip songs already uploaded (via md5 compare)
+ * <ol>
+ * <li>Log in with a username/password into iBroadcast</li>
+ * <li>Capture the supported file types from the server</li>
+ * <li>Use user_id and token for subsequent requests returned from initial request</li>
+ * <li>Get md5 listing of user's files (songs in their library) from iBroadcast server</li>
+ * <li>Find supported music files locally, give the user option to list those files found</li>
+ * <li>Upload files to iBroadcast via http/post</li>
+ * <li>Skip songs already uploaded (via md5 compare)</li>
+ * </ol>
  */
 public class iBroadcastUploader {
 
@@ -65,10 +67,14 @@ public class iBroadcastUploader {
      */
     public static void main(String[] args) throws IOException {
         // command line arguments are email address and password
-        if (args.length < 2 || args[0].length() == 0 || args[1].length() == 0) {
-            var usage = "Run this script in the parent directory of your music files.\n"
-                    + "usage: java -jar ibroadcast-uploader.jar"
-                    + " <email_address> <password>\n";
+        if (args.length < 2 || args.length > 3
+                || args[0].length() == 0 || args[1].length() == 0
+                || args[0].equals("-h") || args[0].equals("--help") || args[0].equals("/?")) {
+            var usage = "Run this script in the parent directory of your music files\n"
+                    + "or give the music directory as third argument.\n"
+                    + "\n"
+                    + "Usage: java -jar ibroadcast-uploader.jar"
+                    + " <email-address> <password> [<dir>]\n";
             error(usage);
         }
 
@@ -93,11 +99,15 @@ public class iBroadcastUploader {
         var supported = getSupportedExtensions(userData);
 
         // current working directory
-        var userDir = System.getProperty("user.dir");
+        var dir = args.length == 3 ? args[2] : System.getProperty("user.dir");
         // Get files from current working directory
-        message("Collecting files to upload...\n");
-        var rootDir = new File(userDir);
+        var rootDir = new File(dir);
+        message("Collecting files to upload in " + rootDir.getAbsolutePath() + " ...\n");
         var listFileTree = listFileTree(rootDir, supported);
+        message("Found " + listFileTree.size() + " files.\n");
+        if (listFileTree.isEmpty()) {
+            return;
+        }
         // confirm upload with user
         var upload = confirm(listFileTree);
         // upload
@@ -140,7 +150,6 @@ public class iBroadcastUploader {
      * @param files music files found
      */
     private static boolean confirm(Collection<File> files) {
-        message("Found " + files.size() + " files.\n");
         message("Press 'L' to list, 'U' to start the upload, or 'Q' to quit.\n");
 
         var list = Pattern.compile("L", Pattern.CASE_INSENSITIVE);
