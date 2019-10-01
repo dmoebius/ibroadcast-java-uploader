@@ -175,10 +175,12 @@ public class iBroadcastUploader {
                 "user_id=" + userId + "&token=" + token,
                 "application/x-www-form-urlencoded");
         var jsonArray = md5Object.getJSONArray("md5");
-        Set<String> ret = new HashSet<>();
+        var ret = new HashSet<String>();
         for (var i = 0; i < jsonArray.length(); i++) {
-            var md5 = jsonArray.getString(i);
-            ret.add(md5);
+            if (!jsonArray.isNull(i)) {
+                var md5 = jsonArray.getString(i);
+                ret.add(md5);
+            }
         }
         return ret;
     }
