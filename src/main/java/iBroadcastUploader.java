@@ -136,6 +136,9 @@ public class iBroadcastUploader {
             var supportedExtension = supportedArray.getJSONObject(i);
             supported.add(supportedExtension.getString("extension"));
         }
+        // remove playlist extensions; iBroadcase constantly reuploads them even if MD5 is unchanged
+        supported.remove(".m3u");
+        supported.remove(".m3u8");
         return supported;
     }
 
