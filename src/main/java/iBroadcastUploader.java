@@ -19,9 +19,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.security.DigestInputStream;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -58,16 +55,7 @@ public class iBroadcastUploader {
 
     private static final String CHARSET = "UTF-8";
     private static final CharSequence CR_LF = "\r\n";
-    private static final char[] DIGITS = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
     private static final int bufferSize = 32 * 4096;
-
-    private static final ThreadLocal<MessageDigest> md5Digest = ThreadLocal.withInitial(() -> {
-        try {
-            return MessageDigest.getInstance("MD5");
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
-        }
-    });
 
     /**
      * @param args command line arguments
@@ -256,36 +244,46 @@ public class iBroadcastUploader {
                                     String userId, String token, File rootDir)
             throws IOException {
         message("Getting checksums...\n");
-        var md5 = getMD5(userId, token);
+        var total = listFileTree.size();
+        var count = new AtomicInteger();
+        var knownMD5 = getMD5(userId, token);
+        var md5CacheFile = new File(rootDir, "ib-md5-cache.json");
+        var md5Cache = MD5Cache.load(md5CacheFile);
 
-        message("Starting upload...\n");
-        var count = new AtomicInteger(listFileTree.size());
-        listFileTree.parallelStream().forEach(file -> {
-            try {
-                uploadFile(file, userId, token, rootDir, md5, count);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        message("Complete.\n");
+        try {
+            message("Starting upload...\n");
+            listFileTree.parallelStream().forEach(file -> {
+                var relativePath = computeRelativePath(file, rootDir);
+                var cnt = count.incrementAndGet();
+                try {
+                    uploadFile(file, relativePath, userId, token, knownMD5, md5Cache, cnt, total);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            message("Processed " + listFileTree.size() + " files.\n");
+        } finally {
+            md5Cache.save(md5CacheFile);
+        }
     }
 
-    private static void uploadFile(File file, String userId, String token, File rootDir,
-                                   Set<String> md5, AtomicInteger count)
+    private static void uploadFile(File file, String path,
+                                   String userId, String token,
+                                   Set<String> knownMD5, MD5Cache md5Cache,
+                                   int count, int total)
             throws IOException {
-        var hashText = md5sum(file);
-        var path = computeRelativePath(file, rootDir);
-        if (md5.contains(hashText)) {
-            message("Skipping:  " + path + "\n");
-            count.decrementAndGet();
+        var hashText = md5Cache.getMD5Sum(file, path);
+        int len = (int) (Math.log10(total) + 1);
+        var prefix = String.format("%"  + len + "d/%" + len + "d: ", count, total);
+        if (knownMD5.contains(hashText)) {
+            message(prefix + "Skipping:  " + path + "\n");
         } else {
-            message("Uploading: " + path + "\n");
+            message(prefix + "Uploading: " + path + "\n");
             var status = uploadFile(file, path, userId, token);
-            var cnt = count.decrementAndGet();
             if (status == HttpURLConnection.HTTP_OK) {
-                message("Uploaded:  " + path + " -- " + cnt + " to go...\n");
+                message(prefix + "Uploaded:  " + path + "\n");
             } else {
-                message("Failed:    " + path + "\n");
+                message(prefix + "Failed:    " + path + "\n");
             }
         }
     }
@@ -443,22 +441,4 @@ public class iBroadcastUploader {
         System.out.flush();
     }
 
-    private static String md5sum(File file) throws IOException {
-        var buffer = new byte[bufferSize];
-        var digest = md5Digest.get();
-        try (var dis = new DigestInputStream(new FileInputStream(file), digest)) {
-            while (dis.read(buffer) != -1) { /*intentionally left blank*/ }
-        }
-        return encodeHex(digest.digest());
-    }
-
-    private static String encodeHex(byte[] data) {
-        var l = data.length;
-        var out = new char[l << 1];
-        for (int i = 0, j = 0; i < l; i++) {
-            out[j++] = DIGITS[(0xF0 & data[i]) >>> 4];
-            out[j++] = DIGITS[0x0F & data[i]];
-        }
-        return new String(out);
-    }
 }
