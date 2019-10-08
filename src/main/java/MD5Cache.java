@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-public class MD5Cache {
+class MD5Cache {
 
     private static final char[] DIGITS = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
     private static final int bufferSize = 32 * 4096;
@@ -121,24 +121,5 @@ public class MD5Cache {
         static MD5Info fromJSON(JSONObject json) {
             return new MD5Info(json.getString("md5"), json.getLong("mod"));
         }
-    }
-
-
-    public static void main(String[] args) throws IOException {
-        var cache = new MD5Cache();
-        var file = new File("/home/dmoebius/Musik/african/artists/Francis Bebey/2014 - Psychedelic Sanza 1982 - 1984/01-11 - Francis Bebey - Sanza Nocturne.mp3");
-        var md5 = cache.getMD5Sum(file, "african/artists/Francis Bebey/2014 - Psychedelic Sanza 1982 - 1984/01-11 - Francis Bebey - Sanza Nocturne.mp3");
-        var md5_2 = cache.getMD5Sum(file, "african/artists/Francis Bebey/2014 - Psychedelic Sanza 1982 - 1984/01-11 - Francis Bebey - Sanza Nocturne.mp3");
-        var md5_3 = cache.getMD5Sum(file, "african/artists/Francis Bebey/2014 - Psychedelic Sanza 1982 - 1984/02-11 - Francis Bebey - Bissau.mp3");
-        var md5_4 = cache.getMD5Sum(file, "african/artists/Francis Bebey/2014 - Psychedelic Sanza 1982 - 1984/02-11 - Francis Bebey - Bissau.mp3");
-        System.out.println(md5);
-        System.out.println(md5_2);
-        System.out.println(md5_3);
-        System.out.println(md5_4);
-        var cacheFile = new File("/home/dmoebius/tmp/cache.json");
-        cache.save(cacheFile);
-        var cache2 = MD5Cache.load(cacheFile);
-        System.out.println(cache);
-        System.out.println(cache2);
     }
 }
