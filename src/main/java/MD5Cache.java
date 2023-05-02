@@ -86,7 +86,11 @@ class MD5Cache {
         var buffer = new byte[bufferSize];
         var digest = md5Digest.get();
         try (var dis = new DigestInputStream(new FileInputStream(file), digest)) {
-            while (dis.read(buffer) != -1) { /*intentionally left blank*/ }
+            while (true) {
+                if (dis.read(buffer) == -1) {
+                    break;
+                }
+            }
         }
         return encodeHex(digest.digest());
     }
