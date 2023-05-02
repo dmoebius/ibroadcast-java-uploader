@@ -165,13 +165,8 @@ public class iBroadcastUploader {
                 message("Press 'U' to start the upload if this looks reasonable, " +
                         "or 'Q' to quit.\n");
                 userInput = sc.next();
-                if (upload.matcher(userInput).matches()) {
-                    return true;
-                } else {
-                    message("aborted.\n");
-                    return false;
-                }
-            } else if (upload.matcher(userInput).matches()) {
+            }
+            if (upload.matcher(userInput).matches()) {
                 return true;
             } else {
                 message("aborted.\n");
@@ -277,7 +272,7 @@ public class iBroadcastUploader {
             throws IOException {
         var hashText = md5Cache.getMD5Sum(file, path);
         int len = (int) (Math.log10(total) + 1);
-        var prefix = String.format("%"  + len + "d/%" + len + "d: ", count, total);
+        var prefix = String.format("%" + len + "d/%" + len + "d: ", count, total);
         if (knownMD5.contains(hashText)) {
             message(prefix + "Skipping:  " + path + "\n");
         } else {
